@@ -13,6 +13,7 @@ import os
 import sys
 import json
 import shutil
+from typing import Any
 import requests
 import time
 import datetime as dt
@@ -31,24 +32,25 @@ API_URL = "/api2/v2"
 APP_TOKEN = "33d57ade8c02dbc5a333db99ff9ae26a"
 
 # user info from /users/customer
-USER_INFO = {}
+USER_INFO: dict[str, Any] = {}
 
 # target profile
 PROFILE = ""
 # profile data from /users/<profile>
-PROFILE_INFO = {}
+PROFILE_INFO: dict[str, Any] = {}
 PROFILE_ID = ""
 
 
 # helper function to make sure a dir is present
-def assure_dir(path):
+def assure_dir(path: str) -> None:
     if not os.path.isdir(path):
         os.mkdir(path)
 
 # Create Auth with Json
-def create_auth():
+def create_auth() -> dict[str, str]:
     with open("auth.json") as f:
         ljson = json.load(f)
+
     return {
         "Accept": "application/json, text/plain, */*",
         "User-Agent": ljson["user-agent"],
@@ -61,7 +63,8 @@ def create_auth():
 
 
 # Every API request must be signed
-def create_signed_headers(link, queryParams):
+def create_signed_headers(link: str, queryParams: dict[str, str]) -> None:
+
     global API_HEADER
     path = "/api2/v2" + link
     if (queryParams):
@@ -76,12 +79,13 @@ def create_signed_headers(link, queryParams):
     checksum = sum([sha_1_b[number] for number in dynamic_rules["checksum_indexes"]]) + dynamic_rules["checksum_constant"]
     API_HEADER["sign"] = dynamic_rules["format"].format(sha_1_sign, abs(checksum))
     API_HEADER["time"] = unixtime
+    
     return
 
 
 # API request convenience function
 # getdata and postdata should both be JSON
-def api_request(endpoint, getdata=None, postdata=None, getparams=None):
+def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dict[str, str]|None =None, getparams: Any=None):
     if getparams == None:
         getparams = {
             "order": "publish_date_desc"
@@ -139,7 +143,7 @@ def api_request(endpoint, getdata=None, postdata=None, getparams=None):
 # /users/<profile>
 # get information about <profile>
 # <profile> = "customer" -> info about yourself
-def get_user_info(profile):
+def get_user_info(profile: str) -> dict[str, str]:
     info = api_request("/users/" + profile).json()
     if "error" in info:
         print("\nERROR: " + info["error"]["message"])
@@ -149,7 +153,7 @@ def get_user_info(profile):
 
 # to get subscribesCount for displaying all subs
 # info about yourself
-def user_me():
+def user_me() -> dict:
     me = api_request("/users/me").json()
     if "error" in me:
         print("\nERROR: " + me["error"]["message"])
@@ -158,7 +162,7 @@ def user_me():
     return me
 
 # get all subscriptions in json
-def get_subs():
+def get_subs() -> list[dict]:
     SUB_LIMIT = str(user_me()["subscribesCount"])
     params = {
         "type": "active",
@@ -172,7 +176,7 @@ def get_subs():
 # download public files like avatar and header
 new_files = 0
 
-def select_sub():
+def select_sub() -> list[Any]:
     # Get Subscriptions
     SUBS = get_subs()
     sub_dict.update({"0": "*** Download All Models ***"})
@@ -194,7 +198,7 @@ def select_sub():
     else:
         return [x.strip() for x in MODELS.split(',')]
 
-def download_public_files():
+def download_public_files() -> None:
     public_files = ["avatar", "header"]
     for public_file in public_files:
         source = PROFILE_INFO[public_file]
@@ -211,7 +215,7 @@ def download_public_files():
 
 
 # download a media item and save it to the relevant directory
-def download_media(media, is_archived):
+def download_media(media: dict[str, Any], is_archived: bool):
     id = str(media["id"])
     source = media["source"]["source"]
 
@@ -236,21 +240,21 @@ def download_media(media, is_archived):
 
 
 # helper to generally download files
-def download_file(source, path):
+def download_file(source: str, path: str) -> None:
     r = requests.get(source, stream=True)
     with open("profiles/" + PROFILE + path, 'wb') as f:
         r.raw.decode_content = True
         shutil.copyfileobj(r.raw, f)
 
 
-def get_id_from_path(path):
+def get_id_from_path(path: str) -> str:
     last_index = path.rfind("/")
     second_last_index = path.rfind("/", 0, last_index - 1)
     id = path[second_last_index + 1:last_index]
     return id
 
 
-def calc_process_time(starttime, arraykey, arraylength):
+def calc_process_time(starttime: float, arraykey: int, arraylength: int) -> tuple:
     timeelapsed = time.time() - starttime
     timeest = (timeelapsed / arraykey) * (arraylength)
     finishtime = starttime + timeest
@@ -262,7 +266,7 @@ def calc_process_time(starttime, arraykey, arraylength):
 
 # iterate over posts, downloading all media
 # returns the new count of downloaded posts
-def download_posts(cur_count, posts, is_archived):
+def download_posts(cur_count: int, posts: list[dict[str, Any]], is_archived: bool):
     for k, post in enumerate(posts, start=1):
         if "media" not in post or ("canViewMedia" in post and not post["canViewMedia"]):
             continue
@@ -283,7 +287,7 @@ def download_posts(cur_count, posts, is_archived):
     return cur_count
 
 
-def get_all_videos(videos):
+def get_all_videos(videos: list[dict[str, Any]]):
     len_vids = len(videos)
     has_more_videos = False
     if len_vids == 50:
@@ -302,7 +306,7 @@ def get_all_videos(videos):
 
     return videos
 
-def get_all_photos(images):
+def get_all_photos(images: list[dict[str, Any]]):
     len_imgs = len(images)
     has_more_images = False
     if len_imgs == 50:
@@ -345,7 +349,7 @@ if __name__ == "__main__":
     API_HEADER = create_auth()
 
     # Select sub
-    sub_dict = {}
+    sub_dict: dict[int|str, str] = {}
     SELECTED_MODELS = select_sub()
 
     # start process

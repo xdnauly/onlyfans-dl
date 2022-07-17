@@ -1,2 +1,8 @@
 profiles*/
 .idea
+.vscode/
+.mypy_cache/
+venv/
+
+# auth.json
+auth.json
