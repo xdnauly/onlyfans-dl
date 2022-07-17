@@ -40,6 +40,8 @@ PROFILE = ""
 PROFILE_INFO: dict[str, Any] = {}
 PROFILE_ID = ""
 
+# DEBUG
+DEBUG_AUTH = True
 
 # helper function to make sure a dir is present
 def assure_dir(path: str) -> None:
@@ -48,8 +50,14 @@ def assure_dir(path: str) -> None:
 
 # Create Auth with Json
 def create_auth() -> dict[str, str]:
-    with open("auth.json") as f:
-        ljson = json.load(f)
+    
+    if DEBUG_AUTH:
+        # avoid auth info leak
+        with open("my_auth.json") as f:
+            ljson = json.load(f)
+    else:
+        with open("auth.json") as f:
+            ljson = json.load(f)
 
     return {
         "Accept": "application/json, text/plain, */*",
@@ -85,7 +93,7 @@ def create_signed_headers(link: str, queryParams: dict[str, str]) -> None:
 
 # API request convenience function
 # getdata and postdata should both be JSON
-def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dict[str, str]|None =None, getparams: Any=None):
+def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dict[str, str]|None =None, getparams: Any|None=None):
     if getparams == None:
         getparams = {
             "order": "publish_date_desc"
