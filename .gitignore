@@ -7,3 +7,4 @@ venv/
 # auth.json in your device
 # avoid data leak
 my_auth.json
+tests/

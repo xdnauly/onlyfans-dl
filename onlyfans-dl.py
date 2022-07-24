@@ -8,16 +8,18 @@
 # This program is Free Software, licensed under the
 # terms of GPLv3. See LICENSE.txt for details.
 
+import asyncio
 import re
 import os
 import sys
 import json
 import shutil
-from typing import Any
-import requests
 import time
 import datetime as dt
 import hashlib
+import httpx
+
+from typing import Any
 
 # maximum number of posts to index
 # DONT CHANGE THAT
@@ -41,7 +43,11 @@ PROFILE_INFO: dict[str, Any] = {}
 PROFILE_ID = ""
 
 # DEBUG
-DEBUG_AUTH = True
+DEBUG_AUTH = False
+
+# async 
+DOWNLOAD_LIMIT = 10
+
 
 # helper function to make sure a dir is present
 def assure_dir(path: str) -> None:
@@ -50,7 +56,6 @@ def assure_dir(path: str) -> None:
 
 # Create Auth with Json
 def create_auth() -> dict[str, str]:
-    
     if DEBUG_AUTH:
         # avoid auth info leak
         with open("my_auth.json") as f:
@@ -93,7 +98,7 @@ def create_signed_headers(link: str, queryParams: dict[str, str]) -> None:
 
 # API request convenience function
 # getdata and postdata should both be JSON
-def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dict[str, str]|None =None, getparams: Any|None=None):
+def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dict[str, str]|None =None, getparams=None):
     if getparams == None:
         getparams = {
             "order": "publish_date_desc"
@@ -107,7 +112,7 @@ def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dic
             # Fixed the issue with the maximum limit of 10 posts by creating a kind of "pagination"
 
             create_signed_headers(endpoint, getparams)
-            list_base = requests.get(URL + API_URL + endpoint,
+            list_base = httpx.get(URL + API_URL + endpoint,
                                      headers=API_HEADER,
                                      params=getparams).json()
             posts_num = len(list_base)
@@ -119,7 +124,7 @@ def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dic
                 while posts_num == POST_LIMIT:
                     # Extract posts
                     create_signed_headers(endpoint, getparams)
-                    list_extend = requests.get(URL + API_URL + endpoint,
+                    list_extend = httpx.get(URL + API_URL + endpoint,
                                                headers=API_HEADER,
                                                params=getparams).json()
                     posts_num = len(list_extend)
@@ -137,12 +142,12 @@ def api_request(endpoint: str, getdata: dict[str, str]|None =None, postdata: dic
         else:
             create_signed_headers(endpoint, getparams)
             print('x')
-            return requests.get(URL + API_URL + endpoint,
+            return httpx.get(URL + API_URL + endpoint,
                                 headers=API_HEADER,
                                 params=getparams)
     else:
         create_signed_headers(endpoint, getparams)
-        return requests.post(URL + API_URL + endpoint,
+        return httpx.post(URL + API_URL + endpoint,
                              headers=API_HEADER,
                              params=getparams,
                              data=postdata)
@@ -183,6 +188,7 @@ def get_subs() -> list[dict]:
 
 # download public files like avatar and header
 new_files = 0
+tasks: list = []
 
 def select_sub() -> list[Any]:
     # Get Subscriptions
@@ -244,12 +250,27 @@ def download_media(media: dict[str, Any], is_archived: bool):
         # print(path)
         global new_files
         new_files += 1
-        download_file(source, path)
 
+        global tasks
+        if len(tasks) == DOWNLOAD_LIMIT:
+            asyncio.run(async_download(tasks.copy()))
+            tasks = []
+        else:
+            tasks.append(async_download_file(source, path))
+
+async def async_download(lst: list):
+    await asyncio.gather(*lst)
+
+async def async_download_file(source: str, path: str):
+    with open("profiles/" + PROFILE + path, 'wb') as f:
+        async with httpx.AsyncClient() as client:
+            async with client.stream('GET', source) as r:
+                async for chunk in r.aiter_bytes():
+                    f.write(chunk)
 
 # helper to generally download files
-def download_file(source: str, path: str) -> None:
-    r = requests.get(source, stream=True)
+def download_file(source, path):
+    r = httpx.get(source, stream=True)
     with open("profiles/" + PROFILE + path, 'wb') as f:
         r.raw.decode_content = True
         shutil.copyfileobj(r.raw, f)
@@ -262,11 +283,11 @@ def get_id_from_path(path: str) -> str:
     return id
 
 
-def calc_process_time(starttime: float, arraykey: int, arraylength: int) -> tuple:
+def calc_process_time(starttime, arraykey: int, arraylength: int) -> tuple:
     timeelapsed = time.time() - starttime
     timeest = (timeelapsed / arraykey) * (arraylength)
     finishtime = starttime + timeest
-    finishtime = dt.datetime.fromtimestamp(finishtime).strftime("%H:%M:%S")  # in time
+    finishtime = dt.datetime.fromtimestamp(finishtime).strftime("%H:%M:%S") # in time
     lefttime = dt.timedelta(seconds=(int(timeest - timeelapsed)))  # get a nicer looking timestamp this way
     timeelapseddelta = dt.timedelta(seconds=(int(timeelapsed)))  # same here
     return (timeelapseddelta, lefttime, finishtime)
@@ -351,8 +372,12 @@ if __name__ == "__main__":
         ARG1 = sys.argv[1]
 
     # Get the rules for the signed headers dynamically, as they may be fluid
-    dynamic_rules = requests.get(
-        'https://raw.githubusercontent.com/DATAHOARDERS/dynamic-rules/main/onlyfans.json').json()
+    dynamic_rules = httpx.get(
+        'https://raw.githubusercontent.com/DATAHOARDERS/dynamic-rules/main/onlyfans.json',
+        headers={
+           "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36",
+        }
+        ).json()
     # Create Header
     API_HEADER = create_auth()
 
