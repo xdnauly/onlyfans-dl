@@ -15,13 +15,12 @@ import os
 import sys
 import json
 import shutil
-from threading import local
 import time
 import datetime as dt
 import hashlib
 import requests
 import httpx
-# import pretty_errors
+import pretty_errors
 
 from typing import Any, Set
 
@@ -46,9 +45,6 @@ PROFILE = ""
 PROFILE_INFO: dict[str, Any] = {}
 PROFILE_ID = ""
 
-# DEBUG
-DEBUG_AUTH = False
-
 # async
 DOWNLOAD_LIMIT = 8
 
@@ -61,11 +57,8 @@ def assure_dir(path: str) -> None:
         os.mkdir(path)
 
 # Create Auth with Json
-
-
 def create_auth() -> dict[str, str]:
-    if DEBUG_AUTH:
-        # avoid auth info leak
+    if os.path.exists('my_auth.json'):
         with open("my_auth.json") as f:
             ljson = json.load(f)
     else:
